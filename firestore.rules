@@ -1,0 +1,184 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn();
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'paulineingrid123@gmail.com' ||
+        (request.auth.token.keys().hasAny(['super_admin']) && request.auth.token.super_admin == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. User Profiles
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'department', 'roleTitle']) &&
+             data.keys().hasOnly(['uid', 'email', 'displayName', 'department', 'roleTitle', 'officeLocation', 'createdAt', 'updatedAt']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.department is string && data.department.size() <= 64 &&
+             data.roleTitle is string && data.roleTitle.size() <= 128 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)) &&
+             (!('officeLocation' in data) || (data.officeLocation is string && data.officeLocation.size() <= 64));
+    }
+
+    match /users/{userId}/profile/data {
+      allow get: if isVerifiedUser() && (request.auth.uid == userId || isSuperAdmin()) && isValidId(userId);
+      allow create: if isVerifiedUser() && request.auth.uid == userId && isValidId(userId) &&
+                       isValidUserProfile(incoming()) && incoming().uid == request.auth.uid;
+      allow update: if isVerifiedUser() && (request.auth.uid == userId || isSuperAdmin()) && isValidId(userId) &&
+                       isValidUserProfile(incoming()) && incoming().uid == existing().uid &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'department', 'roleTitle', 'officeLocation', 'updatedAt']);
+      allow delete: if isSuperAdmin() && isValidId(userId);
+    }
+
+    // 2. Personal Quality Audits
+    function isValidAuditRecord(data) {
+      return data.keys().hasAll(['id', 'userId', 'department', 'processName', 'status']) &&
+             data.keys().hasOnly([
+               'id', 'userId', 'employeeName', 'employeeEmail', 'department', 'roleTitle',
+               'officeLocation', 'processName', 'standardId', 'standardCode', 'status',
+               'classification', 'priority', 'findings', 'rootCauses', 'pdcaPlan',
+               'kpiIndicators', 'recommendations', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.department is string && data.department.size() <= 64 &&
+             data.processName is string && data.processName.size() <= 160 &&
+             data.status in ['in_progress', 'completed', 'archived'] &&
+             (!('classification' in data) || data.classification in ['conforms', 'partial_gap', 'process_gap', 'improvement_opportunity', 'not_verified']) &&
+             (!('priority' in data) || data.priority in ['low', 'medium', 'high']) &&
+             (!('findings' in data) || (data.findings is string && data.findings.size() <= 25000)) &&
+             (!('rootCauses' in data) || (data.rootCauses is string && data.rootCauses.size() <= 25000)) &&
+             (!('pdcaPlan' in data) || (data.pdcaPlan is string && data.pdcaPlan.size() <= 25000)) &&
+             (!('recommendations' in data) || (data.recommendations is string && data.recommendations.size() <= 25000));
+    }
+
+    match /users/{userId}/audits/{auditId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && isValidId(auditId) &&
+                    (request.auth.uid == userId || isSuperAdmin());
+      allow list: if isVerifiedUser() && isValidId(userId) &&
+                     (request.auth.uid == userId || isSuperAdmin());
+      allow create: if isVerifiedUser() && request.auth.uid == userId && isValidId(userId) && isValidId(auditId) &&
+                       isValidAuditRecord(incoming()) && incoming().userId == request.auth.uid &&
+                       incoming().id == auditId;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidId(auditId) &&
+                       isValidAuditRecord(incoming()) && incoming().userId == existing().userId &&
+                       (
+                         isSuperAdmin() ||
+                         (
+                           request.auth.uid == userId &&
+                           // Terminal lock: regular users cannot edit once completed
+                           existing().status != 'completed' &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'employeeName', 'employeeEmail', 'department', 'roleTitle', 'officeLocation',
+                             'processName', 'standardId', 'standardCode', 'status', 'classification',
+                             'priority', 'findings', 'rootCauses', 'pdcaPlan', 'kpiIndicators',
+                             'recommendations', 'updatedAt'
+                           ])
+                         )
+                       );
+      allow delete: if isSuperAdmin() && isValidId(userId) && isValidId(auditId);
+
+      // 3. Turn-by-turn interactions under an audit
+      match /interactions/{interactionId} {
+        allow get: if isVerifiedUser() && isValidId(userId) && isValidId(auditId) && isValidId(interactionId) &&
+                      (request.auth.uid == userId || isSuperAdmin());
+        allow list: if isVerifiedUser() && isValidId(userId) && isValidId(auditId) &&
+                       (request.auth.uid == userId || isSuperAdmin());
+        allow create: if isVerifiedUser() && request.auth.uid == userId && isValidId(userId) &&
+                         isValidId(auditId) && isValidId(interactionId) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().auditId == auditId &&
+                         incoming().content is string && incoming().content.size() <= 30000 &&
+                         incoming().sender in ['user', 'assistant', 'system'];
+        allow update: if false; // Messages are immutable audit transcripts
+        allow delete: if isSuperAdmin() && isValidId(userId) && isValidId(auditId) && isValidId(interactionId);
+      }
+    }
+
+    // 4. Company Quality Standards (PRM SOP Library)
+    function isValidStandard(data) {
+      return data.keys().hasAll(['id', 'code', 'title', 'department', 'version', 'status']) &&
+             data.keys().hasOnly(['id', 'code', 'title', 'department', 'version', 'effectiveDate', 'scope', 'requirements', 'qualityIndicators', 'status', 'authorEmail', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.code is string && data.code.size() <= 64 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.department is string && data.department.size() <= 64 &&
+             data.version is string && data.version.size() <= 32 &&
+             data.status in ['active', 'archived', 'draft'] &&
+             (!('requirements' in data) || (data.requirements is string && data.requirements.size() <= 30000));
+    }
+
+    match /standards/{standardId} {
+      allow get: if isVerifiedUser() && isValidId(standardId);
+      allow list: if isVerifiedUser();
+      allow create: if isSuperAdmin() && isValidId(standardId) && isValidStandard(incoming()) && incoming().id == standardId;
+      allow update: if isSuperAdmin() && isValidId(standardId) && isValidStandard(incoming()) && incoming().id == existing().id;
+      allow delete: if isSuperAdmin() && isValidId(standardId);
+    }
+
+    // 5. Organization-Wide Continuous Improvement Actions (PDCA)
+    function isValidImprovementAction(data) {
+      return data.keys().hasAll(['id', 'department', 'processName', 'problemStatement', 'correctiveAction', 'status', 'priority']) &&
+             data.keys().hasOnly(['id', 'auditId', 'department', 'processName', 'problemStatement', 'correctiveAction', 'pdcaPhase', 'status', 'priority', 'assignedOwner', 'targetDate', 'verificationResult', 'notes', 'createdByUser', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.department is string && data.department.size() <= 128 &&
+             data.processName is string && data.processName.size() <= 256 &&
+             data.problemStatement is string && data.problemStatement.size() <= 15000 &&
+             data.correctiveAction is string && data.correctiveAction.size() <= 15000 &&
+             data.status is string && data.status.size() <= 64 &&
+             data.priority is string && data.priority.size() <= 32;
+    }
+
+    match /actions/{actionId} {
+      allow get: if isVerifiedUser() && isValidId(actionId);
+      allow list: if isVerifiedUser();
+      allow create: if isVerifiedUser() && isValidId(actionId) && isValidImprovementAction(incoming());
+      allow update: if isVerifiedUser() && isValidId(actionId) && isValidImprovementAction(incoming()) &&
+                       (isSuperAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['status', 'pdcaPhase', 'verificationResult', 'notes', 'targetDate', 'updatedAt']));
+      allow delete: if isSuperAdmin() && isValidId(actionId);
+    }
+
+    // 6. Designated Administrators Directory
+    match /admins/{adminUid} {
+      allow get: if isVerifiedUser() && isValidId(adminUid);
+      allow list: if isSuperAdmin();
+      allow write: if isSuperAdmin() && isValidId(adminUid);
+    }
+
+    // 7. Administrator Role Change Audit Logs
+    match /admin_audit_logs/{logId} {
+      allow get: if isSuperAdmin() && isValidId(logId);
+      allow list: if isSuperAdmin();
+      allow create: if isSuperAdmin() && isValidId(logId);
+      allow update, delete: if false; // Immutable audit log
+    }
+  }
+}

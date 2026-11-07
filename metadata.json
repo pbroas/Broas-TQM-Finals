@@ -1,0 +1,6 @@
+{
+  "name": "PRM Quality Intelligence",
+  "description": "Secure, AI-powered quality audit and continuous process improvement platform for Priority Risk Management (PRM).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

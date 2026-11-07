@@ -1,0 +1,400 @@
+{
+  "entities": {
+    "userProfile": {
+      "title": "UserProfile",
+      "description": "Employee profile at Priority Risk Management including department and office location",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "roleTitle": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "officeLocation": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "department", "roleTitle"]
+    },
+    "auditRecord": {
+      "title": "AuditRecord",
+      "description": "Structured quality audit session evaluating a specific operational workflow",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "employeeName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "employeeEmail": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "roleTitle": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "officeLocation": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "processName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "standardId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "standardCode": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "status": {
+          "type": "string",
+          "enum": ["in_progress", "completed", "archived"]
+        },
+        "classification": {
+          "type": "string",
+          "enum": ["conforms", "partial_gap", "process_gap", "improvement_opportunity", "not_verified"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "findings": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "rootCauses": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "pdcaPlan": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "kpiIndicators": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "recommendations": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "department", "processName", "status"]
+    },
+    "auditInteraction": {
+      "title": "AuditInteraction",
+      "description": "Turn-by-turn conversation messages between employee and Gemini TQM auditor",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "auditId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sender": {
+          "type": "string",
+          "enum": ["user", "assistant", "system"]
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "tqmStep": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "auditId", "sender", "content"]
+    },
+    "companyStandard": {
+      "title": "CompanyStandard",
+      "description": "Approved company operating procedure and quality benchmark at PRM",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "code": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "effectiveDate": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "requirements": {
+          "type": "string",
+          "maxLength": 15000
+        },
+        "qualityIndicators": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "archived", "draft"]
+        },
+        "authorEmail": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "code", "title", "department", "version", "status"]
+    },
+    "improvementAction": {
+      "title": "ImprovementAction",
+      "description": "TQM Continuous Improvement and PDCA Action Item tracked by PRM leadership",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "auditId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "processName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "problemStatement": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "correctiveAction": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "pdcaPhase": {
+          "type": "string",
+          "enum": ["plan", "do", "check", "act"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["identified", "under_review", "planned", "in_progress", "pending_verification", "completed", "closed_without_action"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "assignedOwner": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "targetDate": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "verificationResult": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "createdByUser": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "department", "processName", "problemStatement", "correctiveAction", "status", "priority"]
+    },
+    "adminRecord": {
+      "title": "AdminRecord",
+      "description": "Designated Super Administrator record granting management privileges",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "role": {
+          "type": "string",
+          "enum": ["super_admin", "quality_manager"]
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "adminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Immutable security audit log tracking the granting and revoking of Super Administrator privileges",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["grant", "revoke"]
+        },
+        "targetEmail": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "targetUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "performedBy": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "required": ["id", "action", "targetEmail", "performedBy", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/profile/data": {
+      "schema": "userProfile",
+      "description": "Private employee profile data strictly isolated to the user"
+    },
+    "/users/{userId}/audits/{auditId}": {
+      "schema": "auditRecord",
+      "description": "Owner-bound personal audit sessions for an employee"
+    },
+    "/users/{userId}/audits/{auditId}/interactions/{interactionId}": {
+      "schema": "auditInteraction",
+      "description": "Owner-bound turn-by-turn audit messages with Gemini"
+    },
+    "/standards/{standardId}": {
+      "schema": "companyStandard",
+      "description": "PRM approved operating standards library readable by all employees, editable only by Super Admins"
+    },
+    "/actions/{actionId}": {
+      "schema": "improvementAction",
+      "description": "Organization-wide TQM continuous improvement actions readable by employees, manageable by admins and owners"
+    },
+    "/admins/{adminUid}": {
+      "schema": "adminRecord",
+      "description": "Designated Super Admin directory for server and security rules authorization"
+    },
+    "/admin_audit_logs/{logId}": {
+      "schema": "adminAuditLog",
+      "description": "Immutable audit trail of administrator role grants and revocations"
+    }
+  }
+}
