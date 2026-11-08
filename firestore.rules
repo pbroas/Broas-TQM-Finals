@@ -20,12 +20,17 @@ service cloud.firestore {
       return isSignedIn() && (
         request.auth.token.email == 'paulineingrid123@gmail.com' ||
         (request.auth.token.keys().hasAny(['super_admin']) && request.auth.token.super_admin == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidAdminId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-@.]+$');
     }
 
     function incoming() {
@@ -168,9 +173,12 @@ service cloud.firestore {
 
     // 6. Designated Administrators Directory
     match /admins/{adminUid} {
-      allow get: if isVerifiedUser() && isValidId(adminUid);
+      allow get: if isVerifiedUser() && isValidAdminId(adminUid);
       allow list: if isSuperAdmin();
-      allow write: if isSuperAdmin() && isValidId(adminUid);
+      allow write: if (
+        isSuperAdmin() ||
+        (isSignedIn() && (request.auth.uid == adminUid || request.auth.token.email == adminUid))
+      ) && isValidAdminId(adminUid);
     }
 
     // 7. Administrator Role Change Audit Logs

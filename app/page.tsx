@@ -23,7 +23,7 @@ import {
   User,
 } from 'lucide-react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, getDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc, orderBy } from 'firebase/firestore';
 import {
   auth,
   db,
@@ -112,6 +112,86 @@ export default function HomePage() {
     }
   }, []);
 
+  const resolveAdminStatus = React.useCallback(async (userObj: FirebaseUser): Promise<boolean> => {
+    if (isDesignatedSuperAdmin(userObj.email)) return true;
+
+    // 1. Check custom claims if set in token
+    try {
+      const tokenResult = await userObj.getIdTokenResult();
+      if (tokenResult.claims?.super_admin === true || tokenResult.claims?.role === 'super_admin') {
+        return true;
+      }
+    } catch (e) {
+      console.warn('Could not read user token claims:', e);
+    }
+
+    const email = (userObj.email || '').trim().toLowerCase();
+    const sanitizedEmailId = `admin_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+    let isActive = false;
+    let existingData: any = null;
+
+    try {
+      // Check A: Sanitized ID from previous invites (e.g. admin_inviteduser_gmail_com)
+      if (sanitizedEmailId) {
+        const sDoc = await getDoc(doc(db, 'admins', sanitizedEmailId));
+        if (sDoc.exists() && sDoc.data()?.status === 'active') {
+          isActive = true;
+          existingData = sDoc.data();
+        }
+      }
+
+      // Check B: Exact email document ID (e.g. inviteduser@gmail.com)
+      if (!isActive && email) {
+        const eDoc = await getDoc(doc(db, 'admins', email));
+        if (eDoc.exists() && eDoc.data()?.status === 'active') {
+          isActive = true;
+          existingData = eDoc.data();
+        }
+      }
+
+      // Check C: Firebase Auth UID document ID
+      if (!isActive && userObj.uid) {
+        const uDoc = await getDoc(doc(db, 'admins', userObj.uid));
+        if (uDoc.exists() && uDoc.data()?.status === 'active') {
+          isActive = true;
+          existingData = uDoc.data();
+        }
+      }
+    } catch (lookupErr) {
+      console.warn('Admin status lookup notice:', lookupErr);
+    }
+
+    // If recognized as active super admin, auto-sync /admins/{uid} and /admins/{email}
+    // so Firestore rules permanently recognize their request.auth.uid & request.auth.token.email
+    if (isActive) {
+      try {
+        const payload = {
+          ...(existingData || {}),
+          id: userObj.uid,
+          uid: userObj.uid,
+          email: email,
+          displayName: userObj.displayName || existingData?.displayName || email.split('@')[0],
+          role: 'super_admin',
+          status: 'active',
+          lastLoginAt: new Date().toISOString(),
+        };
+
+        if (userObj.uid) {
+          await setDoc(doc(db, 'admins', userObj.uid), payload, { merge: true });
+        }
+        if (email) {
+          await setDoc(doc(db, 'admins', email), { ...payload, id: email }, { merge: true });
+        }
+      } catch (syncErr) {
+        console.warn('Admin auto-sync notice:', syncErr);
+      }
+      return true;
+    }
+
+    return false;
+  }, []);
+
   // Check Token Service API health and listen to Firebase Auth state
   useEffect(() => {
     // Check if Token Service API is enabled in GCP
@@ -120,29 +200,6 @@ export default function HomePage() {
         setTokenNotice(true);
       }
     });
-
-    const resolveAdminStatus = async (userObj: FirebaseUser): Promise<boolean> => {
-      if (isDesignatedSuperAdmin(userObj.email)) return true;
-      try {
-        const tokenResult = await userObj.getIdTokenResult();
-        if (tokenResult.claims?.super_admin === true || tokenResult.claims?.role === 'super_admin') {
-          return true;
-        }
-      } catch (e) {
-        console.warn('Could not read user token claims:', e);
-      }
-
-      try {
-        const adminDoc = await getDoc(doc(db, 'admins', userObj.uid));
-        if (adminDoc.exists() && adminDoc.data()?.status === 'active') {
-          return true;
-        }
-      } catch (e) {
-        // Expected if security rules restrict non-admins from querying /admins
-      }
-
-      return false;
-    };
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -209,25 +266,14 @@ export default function HomePage() {
     return () => {
       unsubscribe();
     };
-  }, [fetchStandards, fetchPersonalAudits]);
+  }, [fetchStandards, fetchPersonalAudits, resolveAdminStatus]);
 
   const refreshAdminStatus = async () => {
     if (!auth.currentUser) return;
     try {
-      // Force refresh the token to obtain newly set custom claims
       await auth.currentUser.getIdToken(true);
-      const tokenResult = await auth.currentUser.getIdTokenResult();
-      const hasClaim = tokenResult.claims?.super_admin === true || tokenResult.claims?.role === 'super_admin';
-      const isDesignated = isDesignatedSuperAdmin(auth.currentUser.email);
-      let inAdminCollection = false;
-      try {
-        const adminDoc = await getDoc(doc(db, 'admins', auth.currentUser.uid));
-        inAdminCollection = adminDoc.exists() && adminDoc.data()?.status === 'active';
-      } catch (e) {
-        // Ignored if access restricted
-      }
-
-      setIsSuperAdmin(isDesignated || hasClaim || inAdminCollection);
+      const isAdmin = await resolveAdminStatus(auth.currentUser);
+      setIsSuperAdmin(isAdmin);
     } catch (err) {
       console.warn('Error refreshing admin status:', err);
     }

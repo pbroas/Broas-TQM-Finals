@@ -284,8 +284,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         isDesignatedRoot: email === DESIGNATED_SUPER_ADMIN_EMAIL.toLowerCase(),
       };
 
-      // 1. Direct write to /admins in Firestore using authenticated client SDK
+      // 1. Direct write to /admins in Firestore under both sanitized ID and email ID
       await setDoc(doc(db, 'admins', sanitizedDocId), newAdminRecord, { merge: true });
+      await setDoc(doc(db, 'admins', email), { ...newAdminRecord, id: email }, { merge: true });
 
       // 2. Record immutable audit log in /admin_audit_logs
       const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -378,9 +379,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const now = new Date().toISOString();
       const currentActor = userEmail || auth.currentUser?.email || 'Super Admin';
 
-      // 1. Mark status as revoked in Firestore /admins
+      // 1. Mark status as revoked in Firestore /admins under both keys
       await setDoc(
         doc(db, 'admins', sanitizedDocId),
+        {
+          status: 'revoked',
+          revokedBy: currentActor,
+          revokedAt: now,
+        },
+        { merge: true }
+      );
+      await setDoc(
+        doc(db, 'admins', email),
         {
           status: 'revoked',
           revokedBy: currentActor,
