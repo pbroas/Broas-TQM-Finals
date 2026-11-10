@@ -5,15 +5,14 @@ import { PRM_QUALITY_AUDIT_SYSTEM_PROMPT, formatAuditContextData } from '@/src/p
 
 // Helper to calculate TQM phase from conversation depth
 function determineTqmPhase(messageCount: number): string {
-  if (messageCount <= 1) return 'process_identification';
-  if (messageCount <= 3) return 'step_mapping';
-  if (messageCount <= 5) return 'friction_analysis';
-  if (messageCount <= 7) return 'root_cause';
-  if (messageCount <= 9) return 'benchmark_comparison';
+  if (messageCount <= 1) return 'step_mapping';
+  if (messageCount <= 3) return 'friction_analysis';
+  if (messageCount <= 5) return 'root_cause';
+  if (messageCount <= 7) return 'benchmark_comparison';
   return 'pdca_synthesis';
 }
 
-// Generates highly tailored, context-aware quick replies if AI skips or malforms JSON
+// Generates highly tailored, department-specific quick replies if AI skips or malforms JSON
 function generateContextualQuickReplies(
   auditorText: string,
   department: string,
@@ -21,137 +20,145 @@ function generateContextualQuickReplies(
   messageCount: number
 ): string[] {
   const textLower = auditorText.toLowerCase();
+  const deptLower = (department || '').toLowerCase();
 
-  // Scenario 1: Questions about systems, software, or tools (AMS360, AgencyZoom, portals)
+  // Root cause 5 Whys probing
   if (
-    textLower.includes('ams360') ||
-    textLower.includes('agencyzoom') ||
-    textLower.includes('ringcentral') ||
-    textLower.includes('portal') ||
-    textLower.includes('tool') ||
-    textLower.includes('system') ||
-    textLower.includes('software')
+    textLower.includes('why') ||
+    textLower.includes('cause') ||
+    textLower.includes('root') ||
+    textLower.includes('driver') ||
+    textLower.includes('underlying')
   ) {
+    if (deptLower.includes('commercial')) {
+      return [
+        'Missing ACORD 25 certificate endorsements delay turnaround time.',
+        'Client requests require manual underwriter verification before binding.',
+        'Lack of integration between AMS360 and carrier portals requires duplicate re-entry.',
+      ];
+    }
+    if (deptLower.includes('personal')) {
+      return [
+        'Renewal premium increases over 10% force manual remarketing across carriers.',
+        'Delayed insured document submissions stall the 45-day review timeline.',
+        'Duplicate entry across carrier rating tools creates avoidable processing backlogs.',
+      ];
+    }
+    if (deptLower.includes('sales') || deptLower.includes('advisor')) {
+      return [
+        'Incomplete intake data from initial leads slows quote generation.',
+        'Manual risk exposure review checklists take time to compile.',
+        'Handoff documentation between sales and servicing lacks formal templates.',
+      ];
+    }
     return [
-      'We log notes and suspense dates directly in AMS360.',
-      'Carrier portals require manual duplicate re-entry of client data.',
-      'AgencyZoom pipeline alerts trigger our follow-up tasks.',
+      'Intake information is frequently incomplete upon initial receipt.',
+      'Manual duplicate entry between agency systems slows processing.',
+      'Lack of automated status alerts causes requests to stall.',
     ];
   }
 
-  // Scenario 2: Questions about delays, timeframes, turnaround, bottlenecks
+  // PDCA & improvement recommendations
+  if (
+    textLower.includes('pdca') ||
+    textLower.includes('improv') ||
+    textLower.includes('corrective') ||
+    textLower.includes('recommend') ||
+    textLower.includes('solution') ||
+    textLower.includes('kpi')
+  ) {
+    return [
+      'Standardize an agency-wide intake checklist to eliminate missing information.',
+      'Implement automated reminder notifications for client and underwriter follow-ups.',
+      'Define clear AMS360 activity suspense benchmarks to track turnaround SLAs.',
+    ];
+  }
+
+  // Delays, turnaround, bottlenecks
   if (
     textLower.includes('delay') ||
     textLower.includes('turnaround') ||
-    textLower.includes('how long') ||
     textLower.includes('bottleneck') ||
-    textLower.includes('wait') ||
-    textLower.includes('days') ||
-    textLower.includes('time')
+    textLower.includes('how long') ||
+    textLower.includes('wait')
   ) {
     return [
       'Carrier underwriting responses average 3 to 5 business days.',
-      'Waiting on insured client documents causes the longest delay.',
-      'Peak season volume causes internal backlog during month-end.',
+      'Waiting on policyholder documentation causes the longest delay.',
+      'Peak renewal volumes create month-end processing backlogs.',
     ];
   }
 
-  // Scenario 3: Questions about handoffs, department routing, or accountability
+  // Systems and duplicate data entry
   if (
-    textLower.includes('handoff') ||
-    textLower.includes('transfer') ||
-    textLower.includes('who') ||
-    textLower.includes('responsib') ||
-    textLower.includes('communicat') ||
-    textLower.includes('routing')
+    textLower.includes('ams360') ||
+    textLower.includes('portal') ||
+    textLower.includes('tool') ||
+    textLower.includes('system') ||
+    textLower.includes('software') ||
+    textLower.includes('agencyzoom') ||
+    textLower.includes('ringcentral')
   ) {
     return [
-      'Handoffs happen via email without automated status tracking.',
-      'Reception creates an AMS360 activity and alerts the specialist.',
-      'Unclear task ownership occasionally causes requests to stall.',
+      'We log notes and suspense dates directly in AMS360.',
+      'Carrier portals require manual duplicate re-entry of client details.',
+      'AgencyZoom pipeline alerts trigger our initial outreach tasks.',
     ];
   }
 
-  // Scenario 4: Questions about standards, SOPs, checklists, or guidelines
+  // Standards, SOPs, checklists
   if (
     textLower.includes('standard') ||
     textLower.includes('sop') ||
     textLower.includes('checklist') ||
     textLower.includes('benchmark') ||
-    textLower.includes('guideline') ||
-    textLower.includes('procedure') ||
-    textLower.includes('policy')
+    textLower.includes('guideline')
   ) {
     return [
-      'We follow the standard PRM 45-day review timeline in AMS360.',
-      'We lack a formal step-by-step checklist for this workflow.',
+      'We follow the standard PRM review timeline in AMS360.',
+      'We currently lack a formal step-by-step checklist for this workflow.',
       'Custom client endorsements require non-standard manual steps.',
     ];
   }
 
-  // Scenario 5: Questions about root causes, reasons, contributing factors (5 Whys)
-  if (
-    textLower.includes('why') ||
-    textLower.includes('cause') ||
-    textLower.includes('factor') ||
-    textLower.includes('reason') ||
-    textLower.includes('contribut') ||
-    textLower.includes('underlying')
-  ) {
-    return [
-      'Intake information is frequently incomplete upon initial receipt.',
-      'High client inquiry volume limits time for thorough documentation.',
-      'Lack of integration between systems forces duplicate manual work.',
-    ];
-  }
-
-  // Scenario 6: Questions about improvement ideas, PDCA, corrective actions
-  if (
-    textLower.includes('improv') ||
-    textLower.includes('recommend') ||
-    textLower.includes('solution') ||
-    textLower.includes('pdca') ||
-    textLower.includes('prevent') ||
-    textLower.includes('change') ||
-    textLower.includes('action')
-  ) {
-    return [
-      'Standardizing a client intake checklist would eliminate missing data.',
-      'Automated email/SMS follow-up reminders would accelerate responses.',
-      'Cross-training account specialists would balance peak workloads.',
-    ];
-  }
-
-  // Scenario 7: Initial workflow sequence & triggers
-  if (
-    messageCount <= 2 ||
-    textLower.includes('begin') ||
-    textLower.includes('trigger') ||
-    textLower.includes('start') ||
-    textLower.includes('first step')
-  ) {
-    if (department.toLowerCase().includes('commercial')) {
+  // Initial steps & triggers (Turns 1-2)
+  if (messageCount <= 2 || textLower.includes('trigger') || textLower.includes('begin') || textLower.includes('start')) {
+    if (deptLower.includes('commercial')) {
       return [
         'Requests arrive via email and require checking certificate holder requirements.',
         'We review policy schedules and carrier limits in AMS360 first.',
-        'Initial processing begins 60 days before commercial renewal expiration.',
+        'Renewal processing begins 90 days before commercial expiration.',
       ];
     }
-    if (department.toLowerCase().includes('sales') || department.toLowerCase().includes('advisor')) {
+    if (deptLower.includes('sales') || deptLower.includes('advisor')) {
       return [
         'New leads are automatically routed and assigned in AgencyZoom.',
         'Initial discovery call is scheduled to collect risk profile and loss history.',
         'Quote preparation begins once all driver and property details are verified.',
       ];
     }
+    if (deptLower.includes('reception') || deptLower.includes('communication')) {
+      return [
+        'Inbound calls arrive via RingCentral and are routed by policy department.',
+        'When specialists are unavailable, we log an AMS360 activity suspense.',
+        'Voicemail triage prioritizes urgent claims before general inquiries.',
+      ];
+    }
+    if (deptLower.includes('operations') || deptLower.includes('admin')) {
+      return [
+        'Daily IVANS download exceptions are reviewed each morning in AMS360.',
+        'Suspense tracking ensures policy change documentation is archived.',
+        'Commission reconciliation requires matching carrier statements manually.',
+      ];
+    }
     return [
       'We pull the AMS360 expiration report 45 to 60 days in advance.',
-      'We contact the insured by phone and follow up with a renewal review email.',
-      'An inbound client service request or policy change triggers the workflow.',
+      'We contact the insured by phone and follow up with a review email.',
+      'Inbound client service requests trigger the initial workflow.',
     ];
   }
 
-  // Fallback: Department and process specific
+  // Default fallback
   return [
     `We document key milestone dates and client notes in AMS360 for ${processName}.`,
     'Client delays and carrier turnaround times represent our biggest friction.',
@@ -222,7 +229,7 @@ function parseQuickPromptsFromResponse(
         meta: {
           tqmPhase: parsedMeta.tqmPhase || determineTqmPhase(messageCount),
           suggestedQuickReplies: validReplies,
-          readyForReport: Boolean(parsedMeta.readyForReport || messageCount >= 8),
+          readyForReport: Boolean(parsedMeta.readyForReport || messageCount >= 6),
         },
       };
     }
@@ -235,7 +242,7 @@ function parseQuickPromptsFromResponse(
     meta: {
       tqmPhase: determineTqmPhase(messageCount),
       suggestedQuickReplies: dynamicReplies,
-      readyForReport: messageCount >= 8,
+      readyForReport: messageCount >= 6,
     },
   };
 }
@@ -279,7 +286,10 @@ export async function POST(req: NextRequest) {
         role: 'user',
         parts: [
           {
-            text: `${dynamicAuditContext}\n\nPlease begin or continue our structured TQM quality audit interview in accordance with the PRM Quality Audit System Prompt. Remember to append the required JSON metadata block with 3 tailored suggestedQuickReplies reflecting your exact latest question.`,
+            text: `${dynamicAuditContext}\n\nPlease begin or continue our structured TQM quality audit interview in accordance with the PRM Quality Audit System Prompt. Remember:
+1. Synthesize prior disclosures before probing further.
+2. Advance along the TQM phases: Step Mapping -> Friction Analysis -> 5 Whys Root Cause -> Benchmark SOP Comparison -> PDCA Synthesis.
+3. Append the required JSON metadata block with 3 tailored suggestedQuickReplies reflecting your exact latest question.`,
           },
         ],
       },
@@ -287,7 +297,7 @@ export async function POST(req: NextRequest) {
         role: 'model',
         parts: [
           {
-            text: `Understood. I am ready to conduct a structured Total Quality Management (TQM) process audit for "${processName}" at Priority Risk Management in accordance with the PRM Quality Audit System Prompt.`,
+            text: `Understood. I am ready to conduct a structured Total Quality Management (TQM) process audit for "${processName}" at Priority Risk Management. I will maintain active workflow memory, avoid repetition, probe root causes using 5 Whys, and synthesize PDCA continuous improvements with tailored quick replies.`,
           },
         ],
       },

@@ -75,10 +75,13 @@ export default function HomePage() {
   // Active Report State
   const [activeReportData, setActiveReportData] = useState<any | null>(null);
 
-  // Personal Audits List
+  // Personal Audits List & Filtering
   const [personalAudits, setPersonalAudits] = useState<any[]>([]);
   const [loadingAudits, setLoadingAudits] = useState(false);
   const [searchAuditTerm, setSearchAuditTerm] = useState('');
+  const [auditFilterTab, setAuditFilterTab] = useState<'all' | 'in_progress' | 'completed'>('all');
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   const fetchStandards = React.useCallback(async () => {
     try {
@@ -324,10 +327,26 @@ export default function HomePage() {
         const kpis = typeof audit.kpiIndicators === 'string' ? JSON.parse(audit.kpiIndicators) : audit.kpiIndicators;
         const recs = typeof audit.recommendations === 'string' ? JSON.parse(audit.recommendations) : audit.recommendations;
 
+        const actionItems = Array.isArray(recs)
+          ? recs.map((r: any) =>
+              typeof r === 'string'
+                ? {
+                    action: r,
+                    rationale: 'Addresses identified workflow gap.',
+                    suggestedOwner: `${audit.department || 'Operations'} Team Lead`,
+                    targetTimeline: '30 Days',
+                    kpiMetric: 'Turnaround reduction & quality improvement',
+                  }
+                : r
+            )
+          : [];
+
         setActiveReportData({
-          auditTitle: `Quality Audit: ${audit.processName}`,
-          summary: `Historical quality audit completed on ${audit.updatedAt ? new Date(audit.updatedAt).toLocaleDateString() : 'earlier'}.`,
-          workflowSteps: ['Documented during initial audit interview.'],
+          auditTitle: `Process Quality Audit: ${audit.processName}`,
+          summary: `Historical quality audit completed on ${
+            audit.updatedAt ? new Date(audit.updatedAt).toLocaleDateString() : 'earlier'
+          }.`,
+          workflowSteps: findings || ['Documented during initial audit interview.'],
           employeeChallenges: ['Friction logged during audit transcript.'],
           verifiedFindings: findings,
           classification: audit.classification || 'partial_gap',
@@ -343,6 +362,39 @@ export default function HomePage() {
           roleTitle: audit.roleTitle,
           officeLocation: audit.officeLocation,
           employeeName: audit.employeeName,
+
+          // Populating 4 structured sections for enhanced report view
+          section1_ProcessFindings: {
+            summary: `Historical quality audit completed on ${
+              audit.updatedAt ? new Date(audit.updatedAt).toLocaleDateString() : 'earlier'
+            }. Practices evaluated against PRM standards.`,
+            workflowSteps: findings || ['Documented during initial audit interview.'],
+            classification: audit.classification || 'partial_gap',
+            priority: audit.priority || 'medium',
+            priorityRationale: 'Evaluated for operational workflow stability.',
+            slaAssessment: 'Evaluated against PRM departmental turnaround benchmarks.',
+          },
+          section2_IdentifiedChallenges: {
+            challenges: ['Friction logged during audit transcript.'],
+            bottlenecks: [],
+            reworkAndDuplicateEntry: [],
+            handoffFriction: [],
+          },
+          section3_PotentialRootCauses: {
+            technique: rootCauses?.technique || '5 Whys & Ishikawa Analysis',
+            fiveWhysChain: rootCauses?.causes || rootCauses?.fiveWhysChain || [],
+            ishikawaCategories: rootCauses?.ishikawaCategories || {
+              peopleAndRoles: [],
+              processAndMethods: [],
+              technologyAndSystems: [],
+              carrierAndExternal: [],
+            },
+          },
+          section4_RecommendedCorrectiveActions: {
+            pdcaMatrix: pdcaPlan || {},
+            actionItems,
+            kpiIndicators: kpis || [],
+          },
         });
         return;
       } catch (e) {
@@ -374,12 +426,30 @@ export default function HomePage() {
     }
   };
 
-  const filteredPersonalAudits = personalAudits.filter((a) => {
-    return (
-      a.processName?.toLowerCase().includes(searchAuditTerm.toLowerCase()) ||
-      a.department?.toLowerCase().includes(searchAuditTerm.toLowerCase())
-    );
-  });
+  const filteredPersonalAudits = personalAudits
+    .filter((a) => {
+      // Tab filter
+      if (auditFilterTab === 'in_progress' && a.status !== 'in_progress') return false;
+      if (auditFilterTab === 'completed' && a.status !== 'completed') return false;
+
+      // Department filter
+      if (selectedDeptFilter !== 'all' && a.department !== selectedDeptFilter) return false;
+
+      // Search term
+      if (!searchAuditTerm.trim()) return true;
+      const term = searchAuditTerm.toLowerCase();
+      return (
+        a.processName?.toLowerCase().includes(term) ||
+        a.department?.toLowerCase().includes(term) ||
+        a.id?.toLowerCase().includes(term) ||
+        a.standardCode?.toLowerCase().includes(term)
+      );
+    })
+    .sort((a, b) => {
+      const dateA = a.updatedAt || '';
+      const dateB = b.updatedAt || '';
+      return sortOrder === 'desc' ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+    });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
@@ -644,28 +714,98 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Personal Audits History */}
+            {/* Personal Audits History Card */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">My Process Quality Audits</h3>
-                  <p className="text-xs text-slate-500">
-                    Review completed audit reports or resume an in-progress conversational audit.
-                  </p>
+              {/* Header & Controls */}
+              <div className="p-5 border-b border-slate-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">Saved Quality Audit Histories</h3>
+                    <p className="text-xs text-slate-500">
+                      Filter by status, department, or keyword to review reports or resume active interviews.
+                    </p>
+                  </div>
+
+                  {/* Filter Tabs */}
+                  <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl self-start sm:self-auto border border-slate-200">
+                    <button
+                      onClick={() => setAuditFilterTab('all')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                        auditFilterTab === 'all'
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      All ({personalAudits.length})
+                    </button>
+                    <button
+                      onClick={() => setAuditFilterTab('in_progress')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                        auditFilterTab === 'in_progress'
+                          ? 'bg-white text-[#0096AF] shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      In Progress ({personalAudits.filter((a) => a.status === 'in_progress').length})
+                    </button>
+                    <button
+                      onClick={() => setAuditFilterTab('completed')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                        auditFilterTab === 'completed'
+                          ? 'bg-white text-emerald-700 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Finalized ({personalAudits.filter((a) => a.status === 'completed').length})
+                    </button>
+                  </div>
                 </div>
 
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={searchAuditTerm}
-                    onChange={(e) => setSearchAuditTerm(e.target.value)}
-                    placeholder="Search my workflows..."
-                    className="w-full text-xs pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[#0096AF]"
-                  />
+                {/* Sub-Filters: Search, Department, and Sort Order */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  {/* Search Input */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={searchAuditTerm}
+                      onChange={(e) => setSearchAuditTerm(e.target.value)}
+                      placeholder="Search process, ID, or SOP code..."
+                      className="w-full text-xs pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[#0096AF] bg-slate-50/50"
+                    />
+                  </div>
+
+                  {/* Department Filter Dropdown */}
+                  <div>
+                    <select
+                      value={selectedDeptFilter}
+                      onChange={(e) => setSelectedDeptFilter(e.target.value)}
+                      className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[#0096AF] bg-slate-50/50 text-slate-700 font-medium"
+                    >
+                      <option value="all">All PRM Departments</option>
+                      {DEPARTMENTS.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Sort Order Selector */}
+                  <div className="flex items-center justify-between sm:justify-end space-x-2 text-xs">
+                    <span className="text-slate-500 font-medium">Sort:</span>
+                    <button
+                      onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                      className="inline-flex items-center space-x-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg border border-slate-200 transition-colors"
+                    >
+                      <span>{sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}</span>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
+              {/* Audit List Table / Cards */}
               <div className="divide-y divide-slate-100">
                 {filteredPersonalAudits.map((audit) => {
                   const isCompleted = audit.status === 'completed';
@@ -675,47 +815,78 @@ export default function HomePage() {
                   return (
                     <div
                       key={audit.id}
-                      className="p-5 hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className="p-5 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4"
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs font-mono font-bold text-[#0096AF] bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
                             {audit.id}
                           </span>
-                          <span className="text-xs font-semibold text-slate-700">{audit.department}</span>
+                          <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                            {audit.department}
+                          </span>
                           <span className="text-xs text-slate-400">•</span>
-                          <span className="text-xs text-slate-500">{audit.standardCode || 'No Standard'}</span>
+                          <span className="text-xs text-slate-600 font-mono">
+                            {audit.standardCode && audit.standardCode !== 'none'
+                              ? `SOP: ${audit.standardCode}`
+                              : 'No Standard Linked'}
+                          </span>
                         </div>
-                        <h4 className="font-bold text-slate-900 text-sm">{audit.processName}</h4>
-                        <div className="flex items-center space-x-3 text-[11px] text-slate-400">
+
+                        <h4 className="font-bold text-slate-900 text-sm sm:text-base">
+                          {audit.processName}
+                        </h4>
+
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
                           <span>
-                            Last updated:{' '}
-                            {audit.updatedAt ? new Date(audit.updatedAt).toLocaleDateString() : 'Recently'}
+                            Last activity:{' '}
+                            <strong className="text-slate-600 font-medium">
+                              {audit.updatedAt ? new Date(audit.updatedAt).toLocaleDateString() : 'Recently'}
+                            </strong>
                           </span>
                           {isCompleted && (
-                            <span className={`font-semibold ${classMeta.text}`}>
-                              • {classMeta.label}
-                            </span>
+                            <>
+                              <span>•</span>
+                              <span className={`font-semibold ${classMeta.text}`}>
+                                {classMeta.label}
+                              </span>
+                            </>
                           )}
+                          <span>•</span>
+                          <span>{audit.roleTitle || 'Specialist'} ({audit.officeLocation || 'Fishers'})</span>
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 shrink-0">
                         <span
-                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full border flex items-center space-x-1.5 ${
                             isCompleted
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
                           }`}
                         >
-                          {isCompleted ? 'Report Finalized' : 'In Progress'}
+                          {isCompleted ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Report Finalized</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3.5 h-3.5 text-amber-600" />
+                              <span>In Progress</span>
+                            </>
+                          )}
                         </span>
 
                         <button
                           onClick={() => handleResumeAudit(audit)}
-                          className="px-3.5 py-1.5 text-xs font-bold text-[#0096AF] hover:text-white bg-teal-50 hover:bg-[#0096AF] border border-teal-200 rounded-lg transition-colors flex items-center space-x-1"
+                          className={`px-3.5 py-1.5 text-xs font-bold rounded-lg border transition-all flex items-center space-x-1.5 shadow-2xs ${
+                            isCompleted
+                              ? 'bg-white hover:bg-teal-50 text-[#0096AF] border-teal-200 hover:border-[#0096AF]'
+                              : 'bg-[#0096AF] hover:bg-[#008197] text-white border-transparent'
+                          }`}
                         >
-                          <span>{isCompleted ? 'View Report' : 'Resume Audit'}</span>
+                          <span>{isCompleted ? 'View Full Report' : 'Resume Interview'}</span>
                           <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -726,17 +897,33 @@ export default function HomePage() {
                 {filteredPersonalAudits.length === 0 && !loadingAudits && (
                   <div className="p-12 text-center">
                     <FileCheck2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-slate-700">No quality audits found.</p>
+                    <p className="text-sm font-semibold text-slate-700">No quality audits match your filter.</p>
                     <p className="text-xs text-slate-500 mt-1 mb-4">
-                      Start your first workflow evaluation to discover continuous improvement opportunities.
+                      {searchAuditTerm || selectedDeptFilter !== 'all' || auditFilterTab !== 'all'
+                        ? 'Try clearing your search filters to see all recorded audits.'
+                        : 'Start your first workflow evaluation to discover continuous improvement opportunities.'}
                     </p>
-                    <button
-                      onClick={() => setIsNewAuditModalOpen(true)}
-                      className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#0096AF] text-white text-xs font-bold rounded-lg shadow-xs"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Start Quality Audit</span>
-                    </button>
+                    <div className="flex items-center justify-center space-x-2">
+                      {(searchAuditTerm || selectedDeptFilter !== 'all' || auditFilterTab !== 'all') && (
+                        <button
+                          onClick={() => {
+                            setSearchAuditTerm('');
+                            setSelectedDeptFilter('all');
+                            setAuditFilterTab('all');
+                          }}
+                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+                        >
+                          Clear Filters
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setIsNewAuditModalOpen(true)}
+                        className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#0096AF] hover:bg-[#008197] text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Start Quality Audit</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

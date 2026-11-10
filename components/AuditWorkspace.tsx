@@ -15,8 +15,12 @@ import {
   CheckCircle2,
   Cpu,
   Info,
+  Check,
+  Flame,
+  HelpCircle,
+  TrendingUp,
 } from 'lucide-react';
-import { doc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { PRMStandard } from '@/lib/default-standards';
 import { sanitizeAndRedact } from '@/lib/security';
@@ -44,11 +48,41 @@ interface AuditWorkspaceProps {
 }
 
 export const TQM_PHASES = [
-  { id: 'step_mapping', label: '1. Step Mapping', desc: 'Document sequential workflow path' },
-  { id: 'friction_analysis', label: '2. Friction Analysis', desc: 'Identify bottlenecks & rework' },
-  { id: 'root_cause_5whys', label: '3. 5 Whys Root Cause', desc: 'Probe underlying drivers' },
-  { id: 'benchmark_comparison', label: '4. Benchmark Standard', desc: 'Compare with PRM SOP' },
-  { id: 'pdca_synthesis', label: '5. PDCA Improvement', desc: 'Formulate corrective cycle' },
+  {
+    id: 'step_mapping',
+    stepNumber: 1,
+    label: 'Step Mapping',
+    desc: 'Map sequential tasks & systems',
+    milestoneTurns: 1,
+  },
+  {
+    id: 'friction_analysis',
+    stepNumber: 2,
+    label: 'Friction Analysis',
+    desc: 'Expose bottlenecks & duplicate entry',
+    milestoneTurns: 3,
+  },
+  {
+    id: 'root_cause',
+    stepNumber: 3,
+    label: '5 Whys Root Cause',
+    desc: 'Probe underlying systemic drivers',
+    milestoneTurns: 5,
+  },
+  {
+    id: 'benchmark_comparison',
+    stepNumber: 4,
+    label: 'SOP Comparison',
+    desc: 'Evaluate against PRM agency standards',
+    milestoneTurns: 7,
+  },
+  {
+    id: 'pdca_synthesis',
+    stepNumber: 5,
+    label: 'PDCA Synthesis',
+    desc: 'Formulate corrective action cycle',
+    milestoneTurns: 9,
+  },
 ];
 
 function getInitialQuickReplies(dept: string, proc: string): string[] {
@@ -80,6 +114,13 @@ function getInitialQuickReplies(dept: string, proc: string): string[] {
       'Calls arrive via RingCentral and are routed by policy type.',
       'When specialists are unavailable, we log an AMS360 activity note.',
       'Handoff confirmation lacks an automated status alert.',
+    ];
+  }
+  if (d.includes('operations') || d.includes('admin')) {
+    return [
+      'Daily IVANS download exceptions are reviewed each morning in AMS360.',
+      'Suspense tracking ensures policy change documentation is archived.',
+      'Commission reconciliation requires matching carrier statements manually.',
     ];
   }
   return [
@@ -127,6 +168,12 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
 
   const initialTurnStarted = useRef(false);
 
+  // Calculate current active phase index (0 to 4)
+  const currentPhaseIndex = Math.max(
+    0,
+    TQM_PHASES.findIndex((p) => p.id === currentPhase)
+  );
+
   const persistInteraction = React.useCallback(
     async (msg: Message, step: string) => {
       try {
@@ -169,7 +216,7 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
         setSaveStatus('error');
         try {
           handleFirestoreError(err, OperationType.WRITE, `users/${userId}/audits/${auditId}`);
-        } catch (e) {
+        } catch {
           // logged
         }
       }
@@ -237,7 +284,7 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
     if (!rawInput.trim() || loading) return;
 
     // Redaction and sanitization
-    const { sanitizedText, redactedCount, warnings } = sanitizeAndRedact(rawInput);
+    const { sanitizedText, warnings } = sanitizeAndRedact(rawInput);
     if (warnings.length > 0) {
       setRedactionNotice(warnings.join(' '));
       setTimeout(() => setRedactionNotice(null), 5000);
@@ -362,26 +409,52 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
     }
   };
 
+  const isEligibleForReport = messages.length >= 4 || readyForReport;
+
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-      {/* Top Banner & Audit Header */}
+    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+      {/* Breadcrumb & Navigation Bar */}
+      <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+        <div className="flex items-center space-x-1.5 truncate">
+          <button
+            onClick={onBack}
+            className="hover:text-slate-900 font-semibold transition-colors flex items-center space-x-1"
+          >
+            <span>My Audits</span>
+          </button>
+          <span>/</span>
+          <span className="text-[#0096AF] font-bold">{department}</span>
+          <span>/</span>
+          <span className="text-slate-800 font-medium truncate max-w-xs">{processName}</span>
+        </div>
+
+        <button
+          onClick={onBack}
+          className="inline-flex items-center space-x-1 text-slate-600 hover:text-slate-900 font-semibold text-xs px-2.5 py-1 rounded-md border border-slate-200 hover:bg-slate-100 transition-colors"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          <span>Exit Workspace</span>
+        </button>
+      </div>
+
+      {/* Audit Header Card */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 mb-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center space-x-3">
-            <button
-              onClick={onBack}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors"
-              title="Return to Dashboard"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
+            <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-[#0096AF] shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-[#0096AF] bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
                   {department}
                 </span>
                 <span className="text-xs text-slate-400">•</span>
-                <span className="text-xs font-medium text-slate-600">{roleTitle} ({officeLocation})</span>
+                <span className="text-xs font-medium text-slate-600">
+                  {roleTitle} ({officeLocation})
+                </span>
+                <span className="text-xs text-slate-400">•</span>
+                <span className="text-xs font-mono text-slate-500">{auditId}</span>
               </div>
               <h2 className="text-base font-bold text-slate-900 mt-0.5">{processName}</h2>
             </div>
@@ -396,16 +469,21 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
 
             {/* Firestore Auto-save status */}
             <div className="flex items-center space-x-1 text-xs text-slate-500 font-medium px-2 py-1">
-              <CheckCircle2 className={`w-3.5 h-3.5 ${saveStatus === 'saved' ? 'text-emerald-500' : 'text-amber-500'}`} />
+              <CheckCircle2
+                className={`w-3.5 h-3.5 ${
+                  saveStatus === 'saved' ? 'text-emerald-500' : 'text-amber-500'
+                }`}
+              />
               <span className="capitalize">{saveStatus}</span>
             </div>
 
+            {/* Generate Report CTA */}
             <button
               onClick={handleGenerateReport}
               disabled={generatingReport || messages.length < 2}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-xs transition-all flex items-center space-x-1.5 ${
-                messages.length >= 4 || readyForReport
-                  ? 'bg-[#DC582A] hover:bg-[#c24c22] text-white animate-pulse'
+              className={`px-4 py-2 rounded-lg text-xs font-bold shadow-xs transition-all flex items-center space-x-1.5 ${
+                isEligibleForReport
+                  ? 'bg-[#DC582A] hover:bg-[#c24c22] text-white shadow-md'
                   : 'bg-[#0096AF] hover:bg-[#008197] text-white disabled:opacity-40'
               }`}
             >
@@ -415,26 +493,63 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* TQM Interview Phase Stepper */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mt-3 pt-3 border-t border-slate-100">
-          {TQM_PHASES.map((phase) => {
-            const isActive = currentPhase === phase.id;
-            return (
-              <div
-                key={phase.id}
-                className={`p-1.5 rounded-md border text-left transition-all ${
-                  isActive
-                    ? 'bg-teal-50/80 border-[#0096AF] shadow-2xs'
-                    : 'bg-slate-50 border-slate-200 opacity-70'
-                }`}
-              >
-                <div className={`text-[11px] font-bold ${isActive ? 'text-[#0096AF]' : 'text-slate-700'}`}>
-                  {phase.label}
+        {/* Enhanced 5-Phase TQM Progress Stepper */}
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center space-x-1.5">
+              <Layers className="w-3.5 h-3.5 text-[#0096AF]" />
+              <span>Audit Progression Stages:</span>
+            </span>
+            <span className="text-[11px] font-semibold text-slate-500">
+              Turn {Math.max(1, Math.floor(messages.length / 2))} • Phase {currentPhaseIndex + 1} of 5
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {TQM_PHASES.map((phase, idx) => {
+              const isCurrent = currentPhase === phase.id;
+              const isPast = idx < currentPhaseIndex;
+
+              return (
+                <div
+                  key={phase.id}
+                  className={`p-2.5 rounded-lg border text-left transition-all ${
+                    isCurrent
+                      ? 'bg-teal-50/90 border-[#0096AF] shadow-xs ring-1 ring-[#0096AF]'
+                      : isPast
+                      ? 'bg-slate-50/80 border-emerald-300 text-slate-700'
+                      : 'bg-slate-50 border-slate-200 opacity-60 text-slate-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${
+                        isCurrent
+                          ? 'bg-[#0096AF] text-white'
+                          : isPast
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      Step {phase.stepNumber}
+                    </span>
+                    {isPast && <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />}
+                    {isCurrent && (
+                      <span className="w-2 h-2 rounded-full bg-[#0096AF] animate-ping" />
+                    )}
+                  </div>
+                  <div
+                    className={`text-xs font-bold truncate ${
+                      isCurrent ? 'text-[#0096AF]' : isPast ? 'text-slate-800' : 'text-slate-600'
+                    }`}
+                  >
+                    {phase.label}
+                  </div>
+                  <div className="text-[10px] text-slate-500 truncate mt-0.5">{phase.desc}</div>
                 </div>
-                <div className="text-[10px] text-slate-500 truncate">{phase.desc}</div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -446,7 +561,7 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Standard Reference Info (if linked) */}
+      {/* Benchmark Standard Reference Bar (if linked) */}
       {standard && (
         <div className="px-3 py-1.5 mb-2 bg-slate-100/90 border border-slate-200 rounded-lg flex items-center justify-between text-xs text-slate-600">
           <div className="flex items-center space-x-2">
@@ -496,7 +611,7 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
           <div className="flex justify-start">
             <div className="bg-slate-50 text-slate-700 border border-slate-200 rounded-xl rounded-bl-none p-4 max-w-md shadow-2xs flex items-center space-x-2.5">
               <Sparkles className="w-4 h-4 text-[#0096AF] animate-spin" />
-              <span className="text-xs font-medium">Auditing workflow & comparing PRM benchmarks...</span>
+              <span className="text-xs font-medium">Auditing workflow & probing root causes...</span>
             </div>
           </div>
         )}
@@ -507,7 +622,7 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
       {/* Dynamic Context-Aware Quick Response Pills */}
       {quickReplies.length > 0 && !loading && (
         <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-          <div className="flex items-center space-x-1 shrink-0 text-[#0096AF] bg-teal-50 px-2 py-1 rounded-md border border-teal-200">
+          <div className="flex items-center space-x-1 shrink-0 text-[#0096AF] bg-teal-50 px-2.5 py-1.5 rounded-md border border-teal-200">
             <Sparkles className="w-3.5 h-3.5" />
             <span className="text-[10px] font-bold uppercase tracking-wider">
               Tailored Quick Prompts:
@@ -517,7 +632,7 @@ export const AuditWorkspace: React.FC<AuditWorkspaceProps> = ({
             <button
               key={i}
               onClick={() => handleSendMessage(reply)}
-              className="text-xs bg-white hover:bg-teal-50 text-slate-700 hover:text-[#0096AF] border border-slate-200 hover:border-[#0096AF] px-3 py-1.5 rounded-full transition-all shrink-0 shadow-2xs text-left max-w-sm truncate"
+              className="text-xs bg-white hover:bg-teal-50 text-slate-700 hover:text-[#0096AF] border border-slate-200 hover:border-[#0096AF] px-3.5 py-1.5 rounded-full transition-all shrink-0 shadow-2xs text-left max-w-sm truncate"
               title={`Click to send: "${reply}"`}
             >
               {reply}
